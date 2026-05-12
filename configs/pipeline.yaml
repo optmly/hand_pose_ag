@@ -1,0 +1,44 @@
+# ── Pipeline Configuration ─────────────────────────────────────────────
+# Central config for the hand pose estimation pipeline.
+# Override per-run via CLI flags or environment variables.
+
+input:
+  video_path: "data/input.mp4"
+  max_seconds: null            # null = process entire video
+  fps_override: null           # null = use video's native FPS
+
+tracking:
+  method: "sam3"
+  text_prompt: "hand"
+  max_hands: 2
+  recondition_every_nth_frame: 0   # 0 = disabled (no re-detection)
+  min_mask_area_ratio: 0.001       # Filter tiny detections
+
+skeleton:
+  primary_detector: "mediapipe"
+  fallback_detector: "vitpose"
+  mediapipe:
+    num_hands: 5
+    min_detection_confidence: 0.30
+    min_tracking_confidence: 0.30
+    rotation_fallbacks: [0, 90, 180, 270]
+    enable_half_crop: true
+  vitpose:
+    model: "usyd-community/vitpose-plus-huge"
+    dataset_index: 3               # COCO-wholebody
+
+  # Egocentric handedness correction
+  flip_handedness: true            # MediaPipe L/R is mirrored in ego view
+
+post_processing:
+  temporal_smoothing: false
+  smoothing_window: 5
+
+output:
+  save_video: true
+  save_json: true
+  save_masks: true
+  output_dir: "outputs/"
+  video_suffix: "_skeleton"
+  json_suffix: "_skeleton"
+  no_labels: false

@@ -1,0 +1,59 @@
+# ── Claude Goal Specification ──────────────────────────────────────────
+#
+# This file defines the goals for Claude to accomplish in the next session.
+# Claude will read this file, execute the goals in priority/dependency order,
+# validate against acceptance criteria, and then commit the results.
+#
+# Workflow:
+#   1. Edit this file to define your goals
+#   2. Start a Claude session: "Read goals/current_goals.yaml and execute"
+#   3. Claude completes the goals and runs: make commit
+#   4. Completed goals are archived to goals/goal_history/
+#
+
+version: "0.1"
+title: "SAM3 Hand Tracking"
+description: >
+  Port the SAM3-based hand tracking module from the prototype pipeline.
+  This is the foundation of the pipeline — detecting and tracking the
+  egocentric user's two hands across video frames.
+
+goals:
+  - id: G1
+    description: "Port track_hands.py — SAM3 text-prompt hand detection and propagation"
+    priority: high
+    status: pending
+    acceptance_criteria:
+      - "Detects two primary hands in egocentric video using SAM3 text prompts"
+      - "Filters out bystander hands by selecting the two largest masks"
+      - "Propagates hand masks across all frames"
+      - "Exports per-frame hand bounding boxes as JSON"
+      - "Exports per-frame hand masks as PNG"
+    notes: >
+      Reference implementation: /home/jingjin/devws/hand_pose_4090/track_hands.py
+      Key features to preserve: text-prompt detection, area-based filtering,
+      mask propagation with SAM3, JSON + mask export.
+
+  - id: G2
+    description: "Port MediaPipe hand skeleton estimation"
+    priority: high
+    status: pending
+    depends_on: [G1]
+    acceptance_criteria:
+      - "Runs MediaPipe HandLandmarker on SAM3 mask-derived crops"
+      - "Outputs 21-joint skeleton per detected hand"
+      - "Maps landmarks back to full-frame coordinates"
+      - "Exports skeleton data as JSON"
+      - "Renders skeleton overlay on output video"
+    notes: >
+      Reference: /home/jingjin/devws/hand_pose_4090/apache_hand_skeleton.py
+      Key patterns: handedness flipping for egocentric, half-crop fallback,
+      rotation invariance (0/90/180/270 retries).
+
+constraints:
+  - "Apache 2.0 licensed components only — no MANO, no HaPTIC"
+  - "Must run on single GPU (RTX 4090)"
+  - "No arm tracking — hands only (21 joints per hand)"
+  - "Egocentric focus — filter to camera operator's hands"
+
+on_complete: "commit_and_push"

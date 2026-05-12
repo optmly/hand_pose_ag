@@ -1,0 +1,44 @@
+# ── Data & media (large files) ─────────────────────────────────────────
+data/
+outputs/
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.webm
+
+# ── Model weights & checkpoints ───────────────────────────────────────
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.task
+*.safetensors
+checkpoints/
+weights/
+
+# ── Python ─────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Environment ────────────────────────────────────────────────────────
+.env
+.venv/
+env/
+venv/
+
+# ── IDE / OS ───────────────────────────────────────────────────────────
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Logs ───────────────────────────────────────────────────────────────
+*.log

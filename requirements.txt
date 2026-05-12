@@ -1,0 +1,16 @@
+# Core
+torch>=2.0
+numpy
+scipy
+opencv-python
+Pillow
+
+# Hand pose estimation
+mediapipe
+transformers
+
+# Configuration & workflow
+pyyaml
+
+# Video I/O
+av
