@@ -89,7 +89,7 @@ DEFAULT_CROP_PAD = 0.35
 WRIST_CROP_SCALES = [300, 450, 600]
 
 # Max gap length (frames) for temporal interpolation
-MAX_INTERP_GAP = 15  # ~0.5s at 30fps
+MAX_INTERP_GAP = 8   # ~0.27s at 30fps (tighter to avoid drift)
 
 # Max wrist drift for interpolation (fraction of image width per frame)
 MAX_INTERP_WRIST_DRIFT = 0.05
@@ -1327,7 +1327,7 @@ def main():
     stats["spatial_suppressed"] = n_spatial
     print(f"  Suppressed {n_phantom} temporal phantoms, {n_spatial} spatial outliers")
 
-    # ── Pass 1.5b: Temporal interpolation ─────────────────────────────
+    # ── Pass 1.5b: Temporal interpolation (mask-validated) ─────────────
     print(f"\n[5/6] Temporal interpolation (max gap={MAX_INTERP_GAP}, "
           f"max drift={MAX_INTERP_WRIST_DRIFT*100:.0f}%/frame)...")
 
@@ -1338,7 +1338,12 @@ def main():
             if len(det["landmarks_px"]) == 21:
                 side_timelines[det["side"]][fidx] = det["landmarks_px"]
 
+    # Mask channel indices for validation
+    INTERP_MASK_IDX = {"left": 0, "right": 1}
+    INTERP_MASK_DILATE = 20  # px — generous margin for validation
+
     interp_count = 0
+    interp_rejected_by_mask = 0
     for side_name in ["left", "right"]:
         timeline = side_timelines[side_name]
         if len(timeline) < 2:
@@ -1376,6 +1381,45 @@ def main():
                 if target_bi is None:
                     continue
 
+                # ── Mask validation: reject if wrist outside the mask ──
+                mask_ok = True
+                if use_npy_masks and args.masks:
+                    npy_path = os.path.join(args.masks,
+                                            f"frame_{interp_f:06d}.npy")
+                    if os.path.exists(npy_path):
+                        npy_m = np.load(npy_path)
+                        ch = INTERP_MASK_IDX[side_name]
+                        hand_mask = npy_m[ch]
+                        if hand_mask.any():
+                            # Dilate mask for generous validation
+                            from scipy import ndimage as _ndi
+                            kernel = cv2.getStructuringElement(
+                                cv2.MORPH_ELLIPSE,
+                                (INTERP_MASK_DILATE * 2 + 1,
+                                 INTERP_MASK_DILATE * 2 + 1))
+                            mask_dil = cv2.dilate(
+                                hand_mask.astype(np.uint8),
+                                kernel).astype(bool)
+                            # Resize if needed
+                            if mask_dil.shape != (height, width):
+                                mask_dil = cv2.resize(
+                                    mask_dil.astype(np.uint8),
+                                    (width, height),
+                                    interpolation=cv2.INTER_NEAREST
+                                ).astype(bool)
+                            wx, wy = interp_lm[0]
+                            if (0 <= wy < height and 0 <= wx < width
+                                    and not mask_dil[wy, wx]):
+                                mask_ok = False
+                                interp_rejected_by_mask += 1
+                        else:
+                            # No mask for this side → skip interp
+                            mask_ok = False
+                            interp_rejected_by_mask += 1
+
+                if not mask_ok:
+                    continue
+
                 if interp_f not in all_frame_dets:
                     all_frame_dets[interp_f] = {}
                 if target_bi not in all_frame_dets[interp_f]:
@@ -1395,7 +1439,9 @@ def main():
                     interp_count += 1
 
     stats["interp"] = interp_count
-    print(f"  Interpolated {interp_count} hand detections")
+    stats["interp_mask_rejected"] = interp_rejected_by_mask
+    print(f"  Interpolated {interp_count} hand detections "
+          f"({interp_rejected_by_mask} rejected by mask validation)")
 
     # ── Pass 2: Render video ──────────────────────────────────────────
     print(f"\n[6/6] Rendering output video...")
