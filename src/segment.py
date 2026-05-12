@@ -9,6 +9,7 @@ Pipeline:
   4. Assign left/right with temporal consistency
   5. Output video 1: hand masks with L/R labels
   6. Output video 2: body mask with dilated hand masks subtracted
+  7. Export bboxes to JSON and masks to .npy stacks
 
 Usage:
     conda activate sam3
@@ -66,6 +67,14 @@ def mask_centroid_x(mask_bool):
     if len(xs) == 0:
         return None
     return float(xs.mean())
+
+
+def mask_to_bbox(mask_2d):
+    """Convert a bool mask to [x1, y1, x2, y2] bbox, or None if empty."""
+    if mask_2d is None or not mask_2d.any():
+        return None
+    ys, xs = np.where(mask_2d)
+    return [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]
 
 
 def mask_centroid(mask_bool):
@@ -535,6 +544,42 @@ def main():
     render_body_video(args.input, body_masks, left_hand_masks, right_hand_masks,
                       body_video_path, fps, W, H, dilate_px=args.hand_dilate)
 
+    # ── Step 6: Export Masks & BBoxes ─────────────────────────────
+    print(f"\n[6/6] Exporting masks and bounding boxes...")
+    masks_out_dir = os.path.join(out_dir, f"{base}_masks")
+    os.makedirs(masks_out_dir, exist_ok=True)
+    bboxes_json_path = os.path.join(out_dir, f"{base}_bboxes.json")
+    
+    bbox_frames = {}
+    for fidx in range(process_frames):
+        lm = left_hand_masks.get(fidx)
+        rm = right_hand_masks.get(fidx)
+        
+        # Save .npy mask stack: [Left, Right, Dummy, Dummy]
+        # (Dummy added to be compatible with apache_hand_skeleton expecting 4 channels)
+        stack = []
+        stack.append(lm if lm is not None else np.zeros((H, W), dtype=bool))
+        stack.append(rm if rm is not None else np.zeros((H, W), dtype=bool))
+        stack.append(np.zeros((H, W), dtype=bool))
+        stack.append(np.zeros((H, W), dtype=bool))
+        np.save(os.path.join(masks_out_dir, f"frame_{fidx:06d}.npy"), np.stack(stack))
+        
+        # Save bboxes
+        frame_bboxes = []
+        l_bbox = mask_to_bbox(lm)
+        if l_bbox:
+            frame_bboxes.append({"bbox": l_bbox, "obj_id": 0})
+        r_bbox = mask_to_bbox(rm)
+        if r_bbox:
+            frame_bboxes.append({"bbox": r_bbox, "obj_id": 1})
+            
+        bbox_frames[str(fidx)] = frame_bboxes
+        
+    with open(bboxes_json_path, "w") as f:
+        json.dump({"width": W, "height": H, "frames": bbox_frames}, f, indent=2)
+    print(f"       Exported masks to {masks_out_dir}/")
+    print(f"       Exported bboxes to {bboxes_json_path}")
+
     # Save metadata
     meta = {
         "version": "0.1",
@@ -556,6 +601,8 @@ def main():
     print(f"Done!")
     print(f"  Hand video: {hand_video_path}")
     print(f"  Body video: {body_video_path}")
+    print(f"  Bboxes:     {bboxes_json_path}")
+    print(f"  Masks:      {masks_out_dir}/")
     print(f"  Metadata:   {masks_json_path}")
     print(f"{'=' * 60}")
 
